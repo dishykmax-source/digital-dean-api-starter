@@ -1,22 +1,36 @@
-from pydantic import BaseModel, ConfigDict
+from enum import Enum
+from uuid import UUID
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+class AcademicStatus(str, Enum):
+    ACTIVE = "active"
+    ACADEMIC_LEAVE = "academic_leave"
+    EXPELLED = "expelled"
+    GRADUATED = "graduated"
 
 
 class StrictModel(BaseModel):
-    """Базова модель, яка не приймає невідомих полів."""
-
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
 class StudentCreate(StrictModel):
-    # TODO: додайте full_name, email і group_code з обмеженнями.
-    pass
+    full_name: str = Field(min_length=5, max_length=120)
+    email: EmailStr
+    group_code: str = Field(pattern=r"^[A-Za-zА-Яа-яІіЇїЄєҐґ]+-[0-9]{2}$")
+    academic_status: AcademicStatus
 
 
-class StudentRead(StudentCreate):
-    # TODO: додайте серверний ідентифікатор id.
-    pass
+class StudentRead(StrictModel):
+    id: UUID
+    full_name: str
+    email: EmailStr
+    group_code: str
+    academic_status: AcademicStatus
 
 
 class StudentUpdate(StrictModel):
-    # TODO: оголосіть дозволені необов’язкові поля для часткового оновлення.
-    pass
+    full_name: str = Field(default=None, min_length=5, max_length=120)
+    email: EmailStr = None
+    group_code: str | None = Field(default=None, pattern=r"^[A-Za-zА-Яа-яІіЇїЄєҐґ]+-[0-9]{2}$")
+    academic_status: AcademicStatus = None
