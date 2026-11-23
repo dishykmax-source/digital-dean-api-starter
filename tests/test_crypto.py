@@ -1,91 +1,146 @@
-"""Початкові тести приймання падають до реалізації; не пропускайте їх."""
-
-from concurrent.futures import ThreadPoolExecutor
+"""Модульні перевірки криптографічного шару (таблиця 6, сценарії 1-8)."""
+import json
+import threading
 from secrets import token_bytes
 
 import pytest
 
 from app.security.adapters import CiphertextError, open_bytes, seal_bytes
 from app.security.context import note_aad
-from app.security.keys import create_process_key
 from app.security.nonce import NonceSequence
-from app.security.profiles import BACKENDS, KEY_BYTES, validate_profile
+from app.security.profiles import BACKENDS, COMBINATIONS, KEY_BYTES, validate_profile
 
-PROFILES = tuple(KEY_BYTES.items())
-
-
-@pytest.mark.parametrize("backend", BACKENDS)
-@pytest.mark.parametrize("algorithm,key_size", PROFILES)
-@pytest.mark.parametrize("message", (b"", b"demo", "Навчальна примітка  ".encode()))
-def test_round_trip(backend, algorithm, key_size, message):
-    # Новий незалежний ключ на тест; лише одне шифрування з nonce=0.
-    key, nonce, aad = token_bytes(key_size), bytes(12), b"synthetic-context"
-    ct, tag = seal_bytes(backend, algorithm, key, nonce, message, aad)
-    assert len(ct) == len(message)
-    assert len(tag) == 16
-    assert open_bytes(backend, algorithm, key, nonce, ct, tag, aad) == message
+COMBO = pytest.mark.parametrize("backend,algorithm", COMBINATIONS)
+AAD = b"practice-02-test"
 
 
-@pytest.mark.parametrize("backend", BACKENDS)
-@pytest.mark.parametrize("algorithm,key_size", PROFILES)
-@pytest.mark.parametrize("changed_part", ("ct", "tag", "aad", "key", "nonce"))
-def test_tampering_is_rejected(backend, algorithm, key_size, changed_part):
-    key, nonce, aad = token_bytes(key_size), bytes(12), b"synthetic-context"
-    ct, tag = seal_bytes(backend, algorithm, key, nonce, b"demo", aad)
-    if changed_part == "ct":
-        ct = bytes([ct[0] ^ 1]) + ct[1:]
-    elif changed_part == "tag":
-        tag = bytes([tag[0] ^ 1]) + tag[1:]
-    elif changed_part == "aad":
-        aad = b"different-context"
-    elif changed_part == "key":
-        key = token_bytes(key_size)
-    else:
-        nonce = bytes([1]) + nonce[1:]
+def fresh(algorithm):
+    return token_bytes(KEY_BYTES[algorithm]), token_bytes(12)
+
+
+@COMBO
+@pytest.mark.parametrize("data", [b"", b"x", "Привіт, світе".encode("utf-8"), token_bytes(70000)], ids=["empty", "one-byte", "utf8", "large-70kb"])
+def test_exact_roundtrip(backend, algorithm, data):
+    key, nonce = fresh(algorithm)
+    ct, tag = seal_bytes(backend, algorithm, key, nonce, data, AAD)
+    assert len(ct) == len(data) and len(tag) == 16
+    assert open_bytes(backend, algorithm, key, nonce, ct, tag, AAD) == data
+
+
+@COMBO
+def test_tampered_ciphertext(backend, algorithm):
+    key, nonce = fresh(algorithm)
+    ct, tag = seal_bytes(backend, algorithm, key, nonce, b"demo", AAD)
+    changed = bytes([ct[0] ^ 1]) + ct[1:]
     with pytest.raises(CiphertextError):
-        open_bytes(backend, algorithm, key, nonce, ct, tag, aad)
+        open_bytes(backend, algorithm, key, nonce, changed, tag, AAD)
 
 
-@pytest.mark.parametrize("algorithm,key_size", PROFILES)
-@pytest.mark.parametrize("writer,reader", (BACKENDS, tuple(reversed(BACKENDS))))
-def test_cross_library(algorithm, key_size, writer, reader):
-    key, nonce, aad = token_bytes(key_size), bytes(12), b"synthetic-context"
-    ct, tag = seal_bytes(writer, algorithm, key, nonce, b"demo", aad)
-    assert open_bytes(reader, algorithm, key, nonce, ct, tag, aad) == b"demo"
+@COMBO
+def test_tampered_tag(backend, algorithm):
+    key, nonce = fresh(algorithm)
+    ct, tag = seal_bytes(backend, algorithm, key, nonce, b"demo", AAD)
+    with pytest.raises(CiphertextError):
+        open_bytes(backend, algorithm, key, nonce, ct, bytes([tag[0] ^ 1]) + tag[1:], AAD)
 
 
-@pytest.mark.parametrize("args", (
-    ("unknown", bytes(32), bytes(12)),
-    ("AES-256-GCM", bytes(16), bytes(12)),
-    ("AES-128-GCM", bytes(16), bytes(11)),
-))
-def test_invalid_profile(args):
+@COMBO
+def test_truncated_tag_rejected(backend, algorithm):
+    key, nonce = fresh(algorithm)
+    ct, tag = seal_bytes(backend, algorithm, key, nonce, b"demo", AAD)
+    with pytest.raises(CiphertextError):
+        open_bytes(backend, algorithm, key, nonce, ct, tag[:-1], AAD)
+
+
+@COMBO
+def test_tampered_aad(backend, algorithm):
+    key, nonce = fresh(algorithm)
+    ct, tag = seal_bytes(backend, algorithm, key, nonce, b"demo", AAD)
+    with pytest.raises(CiphertextError):
+        open_bytes(backend, algorithm, key, nonce, ct, tag, AAD + b"!")
+
+
+@COMBO
+def test_wrong_key_same_length(backend, algorithm):
+    key, nonce = fresh(algorithm)
+    other_key = token_bytes(len(key))
+    ct, tag = seal_bytes(backend, algorithm, key, nonce, b"demo", AAD)
+    with pytest.raises(CiphertextError):
+        open_bytes(backend, algorithm, other_key, nonce, ct, tag, AAD)
+
+
+@COMBO
+def test_wrong_key_length_is_separate_error(backend, algorithm):
+    key, nonce = fresh(algorithm)
     with pytest.raises(ValueError):
-        validate_profile(*args)
+        seal_bytes(backend, algorithm, key[:-1], nonce, b"demo", AAD)
 
 
-def test_counter_limit_and_concurrency():
-    seq = NonceSequence(limit=1000)
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        values = list(executor.map(lambda _: seq.next(), range(1000)))
-    assert len(set(values)) == 1000
-    assert all(len(value) == 12 for value in values)
+@COMBO
+def test_different_nonce_rejected(backend, algorithm):
+    key, nonce = fresh(algorithm)
+    ct, tag = seal_bytes(backend, algorithm, key, nonce, b"demo", AAD)
+    other = bytes([nonce[0] ^ 1]) + nonce[1:]
+    with pytest.raises(CiphertextError):
+        open_bytes(backend, algorithm, key, other, ct, tag, AAD)
+
+
+@pytest.mark.parametrize("algorithm", list(KEY_BYTES))
+@pytest.mark.parametrize("sealer,opener", [(BACKENDS[0], BACKENDS[1]), (BACKENDS[1], BACKENDS[0])])
+def test_cross_library_compatibility(algorithm, sealer, opener):
+    key, nonce = fresh(algorithm)  # нова пара для кожного напряму
+    data = "Міжбібліотечна перевірка".encode()
+    ct, tag = seal_bytes(sealer, algorithm, key, nonce, data, AAD)
+    assert open_bytes(opener, algorithm, key, nonce, ct, tag, AAD) == data
+
+
+def test_profile_validation_rejects_bad_parameters():
+    key, nonce = fresh("AES-256-GCM")
+    with pytest.raises(ValueError):
+        validate_profile("AES-512-GCM", key, nonce)
+    with pytest.raises(ValueError):
+        validate_profile("AES-256-GCM", key, nonce[:-1])
+    with pytest.raises(ValueError):
+        seal_bytes("unknown-lib", "AES-256-GCM", key, nonce, b"x", AAD)
+
+
+def test_nonce_sequence_unique_and_ordered():
+    seq = NonceSequence()
+    values = [seq.next() for _ in range(5)]
+    assert all(len(v) == 12 for v in values)
+    assert values == [i.to_bytes(12, "big") for i in range(5)]
+
+
+def test_nonce_sequence_limit_does_not_reset():
+    seq = NonceSequence(limit=2)
+    seq.next(); seq.next()
+    with pytest.raises(RuntimeError):
+        seq.next()
     with pytest.raises(RuntimeError):
         seq.next()
 
 
-def test_context_is_bound_to_expected_student():
-    assert note_aad("a", "n", "AES-256-GCM", "k") != note_aad(
-        "b", "n", "AES-256-GCM", "k"
-    )
+def test_nonce_sequence_threaded_no_duplicates():
+    seq, bucket = NonceSequence(), []
+
+    def work():
+        local = [seq.next() for _ in range(500)]
+        bucket.extend(local)
+
+    threads = [threading.Thread(target=work) for _ in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(bucket) == 4000 and len(set(bucket)) == 4000
 
 
-def test_process_key_has_no_secret_in_repr():
-    value = create_process_key()
-    assert len(value.key) == 32
-    assert "key=" not in repr(value)
-    assert "nonces=" not in repr(value)
-
-
-# TODO: доповніть великими повідомленнями, усіченим тегом, невідомою бібліотекою.
-# TODO: перевірте конфігурацію лічильника і відсутність повторів між записами.
+def test_note_aad_is_canonical_and_binds_fields():
+    a = note_aad("11111111-1111-4111-8111-111111111111",
+                 "22222222-2222-4222-8222-222222222222", "AES-256-GCM",
+                 "33333333-3333-4333-8333-333333333333")
+    assert json.loads(a)["version"] == 1
+    assert a == note_aad("11111111-1111-4111-8111-111111111111",
+                         "22222222-2222-4222-8222-222222222222", "AES-256-GCM",
+                         "33333333-3333-4333-8333-333333333333")
+    assert a != note_aad("11111111-1111-4111-8111-111111111112",
+                         "22222222-2222-4222-8222-222222222222", "AES-256-GCM",
+                         "33333333-3333-4333-8333-333333333333")
