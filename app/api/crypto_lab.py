@@ -1,20 +1,46 @@
-"""Маршрут тільки читає звіт; не запускає вимірювання через HTTP."""
-
+"""Читання готового звіту вимірювань (без запуску експерименту)."""
+import json
 from pathlib import Path
+from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, ConfigDict
 
-router = APIRouter(prefix="/api/v1/lab/crypto", tags=["crypto-lab"])
-REPORT_PATH = Path(__file__).resolve().parents[2] / "results/practice-02/report.json"
+router = APIRouter(prefix="/lab/crypto", tags=["crypto-lab"])
+
+# Фіксований шлях із конфігурації; клієнт не може його змінити.
+REPORT_PATH = Path(__file__).resolve().parents[2] / "results" / "practice-02" / "report.json"
+UNAVAILABLE = "Benchmark results unavailable"
 
 
-def load_benchmark_report(path: Path) -> dict:
-    """TODO: прочитати й перевірити report.json, не приймати шлях від клієнта."""
-    raise NotImplementedError("Implement validated benchmark report reader")
+class ResultRow(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    backend: str
+    algorithm: str
+    size_bytes: int
+    operation: str
+    series_mean_ns: list[float]
+    median_ns: float
+    iqr_ns: float
+    throughput_mib_s: float
 
 
-# TODO: GET /benchmark-results, 200 із повним агрегованим звітом.
-# TODO: відсутній файл: 404; пошкоджений: 500 із безпечним detail.
-# TODO: detail="Benchmark results unavailable", без внутрішніх шляхів.
-# TODO: path беріть із конфігурації; тест підмінює конфігурацію, не HTTP-вхід.
-# TODO: підключіть router у своєму main.py після реалізації.
+class BenchmarkReport(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    schema_version: Literal[1]
+    run_id: str
+    environment: dict
+    parameters: dict
+    results: list[ResultRow]
+
+
+@router.get("/benchmark-results")
+def benchmark_results():
+    path = REPORT_PATH
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=UNAVAILABLE)
+    try:
+        report = BenchmarkReport.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        raise HTTPException(status_code=500, detail=UNAVAILABLE)
+    return report.model_dump()

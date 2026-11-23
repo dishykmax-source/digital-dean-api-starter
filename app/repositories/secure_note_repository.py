@@ -1,40 +1,39 @@
-"""Сховище зберігає конверт, не відкритий текст і не ключ."""
-
-from dataclasses import dataclass
+"""Сховище зашифрованих приміток у пам'яті. Поле text не зберігається."""
+from threading import Lock
 from uuid import UUID
 
-
-@dataclass(frozen=True)
-class EncryptedNote:
-    version: int
-    student_id: UUID
-    note_id: UUID
-    algorithm: str
-    backend: str
-    key_id: UUID
-    nonce: bytes
-    ciphertext: bytes
-    tag: bytes
+ENVELOPE_FIELDS = frozenset(
+    {"version", "student_id", "note_id", "algorithm", "backend",
+     "key_id", "nonce", "ciphertext", "tag"}
+)
 
 
 class SecureNoteRepository:
-    def __init__(self):
-        self._items: dict[UUID, EncryptedNote] = {}
+    def __init__(self) -> None:
+        self._items: dict[UUID, dict] = {}
+        self._lock = Lock()
 
-    def add(self, note: EncryptedNote) -> None:
-        """TODO: зберегти коректний конверт без дублювання note_id."""
-        raise NotImplementedError("Implement encrypted note storage")
+    def add(self, envelope: dict) -> None:
+        if set(envelope) != ENVELOPE_FIELDS:
+            raise ValueError("Envelope must contain exactly the defined fields")
+        with self._lock:
+            self._items[envelope["note_id"]] = dict(envelope)
 
-    def get(self, student_id: UUID, note_id: UUID) -> EncryptedNote:
-        """TODO: перевірити належність ресурсу; невідомий запис дає KeyError."""
-        raise NotImplementedError("Implement resource-scoped lookup")
+    def get(self, student_id: UUID, note_id: UUID):
+        """Запис повертається лише для його власного студента."""
+        with self._lock:
+            item = self._items.get(note_id)
+            if item is None or item["student_id"] != student_id:
+                return None
+            return dict(item)
+
+    def list_for_student(self, student_id: UUID) -> list[dict]:
+        with self._lock:
+            return [dict(i) for i in self._items.values() if i["student_id"] == student_id]
 
     def clear(self) -> None:
-        """Очищення записів не змінює ключ і не скидає його лічильник."""
-        self._items.clear()
+        with self._lock:
+            self._items.clear()
 
 
-repository = SecureNoteRepository()
-
-# TODO: додайте операції свого індивідуального варіанта.
-# Підміна _items допустима лише в тестах, не через окремий HTTP-маршрут.
+secure_note_repository = SecureNoteRepository()
