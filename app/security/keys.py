@@ -1,24 +1,51 @@
-"""Матеріал ключа створюють один раз під час запуску процесу API."""
+"""Ключ приміток: створюється один раз на життєвий цикл процесу.
 
+Ключ існує лише в пам'яті, не потрапляє в API, журнали чи файли.
+Після перезапуску створюється новий ключ і нова послідовність nonce.
+"""
+import secrets
+import uuid
 from dataclasses import dataclass, field
-from secrets import token_bytes
-from uuid import UUID, uuid4
 
 from app.security.nonce import NonceSequence
+from app.security.profiles import KEY_BYTES, NOTE_ALGORITHM
 
 
-@dataclass(frozen=True)
-class ProcessKey:
-    key_id: UUID
+@dataclass
+class KeyStore:
+    algorithm: str
+    key_id: uuid.UUID
     key: bytes = field(repr=False)
-    nonces: NonceSequence = field(repr=False)
+    nonce_sequence: NonceSequence = field(repr=False)
+
+    def lookup(self, key_id):
+        """Повертає ключ лише для відомого key_id, інакше None."""
+        try:
+            if uuid.UUID(str(key_id)) == self.key_id:
+                return self.key
+        except ValueError:
+            pass
+        return None
 
 
-def create_process_key(limit: int = 1_000_000) -> ProcessKey:
-    """Викликайте при запуску, а не при кожному запиті чи читанні примітки."""
-    return ProcessKey(uuid4(), token_bytes(32), NonceSequence(limit))
+def create_key_store(limit: int = 1_000_000) -> KeyStore:
+    return KeyStore(
+        algorithm=NOTE_ALGORITHM,
+        key_id=uuid.uuid4(),
+        key=secrets.token_bytes(KEY_BYTES[NOTE_ALGORITHM]),
+        nonce_sequence=NonceSequence(limit=limit),
+    )
 
 
-# TODO: збережіть один ProcessKey у стані застосунку/його залежностях.
-# TODO: маршрути запису й читання використовують цей самий матеріал ключа.
-# Не зберігайте ключ у репозиторії приміток, файлі, JSON чи Git.
+_key_store = create_key_store()
+
+
+def get_key_store() -> KeyStore:
+    return _key_store
+
+
+def reset_key_store(limit: int = 1_000_000) -> KeyStore:
+    """Лише для тестів: новий ключ і новий лічильник."""
+    global _key_store
+    _key_store = create_key_store(limit=limit)
+    return _key_store

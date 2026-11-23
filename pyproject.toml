@@ -4,10 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "digital-dean-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "Educational Digital Dean API practice project"
 requires-python = ">=3.12"
 dependencies = [
+  "cryptography==48.0.1",
+  "pycryptodome==3.24.0",
   "fastapi>=0.110,<1.0",
   "uvicorn[standard]>=0.27,<1.0",
   "pydantic[email]>=2.6,<3.0",
