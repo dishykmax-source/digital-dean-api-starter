@@ -1,98 +1,208 @@
-# Digital Dean API — стартовий проєкт
+\# Digital Dean API — Практична робота №1
 
-Цей репозиторій є стартовою кодовою базою наскрізного навчального проєкту «Цифровий деканат». Не створюйте окремий застосунок для наступної практичної роботи: розвивайте власний форк цього репозиторію і зберігайте сумісність реалізованих маршрутів.
 
-## Отримання власного репозиторію
 
-1. Відкрийте базовий репозиторій: <https://github.com/serhii-ch-eu/digital-dean-api-starter>.
-2. Увійдіть у GitHub і натисніть **Fork**, щоб створити пов’язану копію у власному обліковому записі.
-3. Клонуйте саме власний форк, замінивши `<login>` своїм логіном GitHub:
+Навчальна реалізація базового API інформаційної системи «Цифровий деканат» на FastAPI.
 
-```bash
-git clone https://github.com/<login>/digital-dean-api-starter.git digital-dean-api
-cd digital-dean-api
-```
 
-4. Додайте базовий репозиторій як `upstream` і створіть робочу гілку:
 
-```bash
-git remote add upstream https://github.com/serhii-ch-eu/digital-dean-api-starter.git
-git remote -v
-git switch -c practice-01
-```
+\*\*Індивідуальний варіант:\*\* №3 (`academic\_status`).
 
-Після цих команд `origin` має вказувати на ваш форк, а `upstream` — на базовий репозиторій викладача. Не надсилайте зміни безпосередньо до базового репозиторію.
 
-## Підготовка середовища
 
-```bash
-python -m venv .venv
-```
+\## Технології
 
-Активація в macOS або Linux:
 
-```bash
-source .venv/bin/activate
-```
 
-Активація в Windows PowerShell:
+\- Python 3.12+
+
+\- FastAPI
+
+\- Pydantic 2
+
+\- Uvicorn
+
+\- pytest
+
+\- Postman Collection 2.1
+
+
+
+\## Запуск проєкту
+
+
+
+Створення віртуального середовища:
+
+
 
 ```powershell
-.venv\Scripts\Activate.ps1
+
+python -m venv .venv
+
 ```
 
-Інсталяція залежностей:
 
-```bash
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+
+Активація у Windows PowerShell:
+
+
+
+```powershell
+
+.\\.venv\\Scripts\\Activate.ps1
+
 ```
 
-## Запуск
 
-```bash
+
+Встановлення залежностей:
+
+
+
+```powershell
+
+python -m pip install -e ".\[dev]"
+
+```
+
+
+
+Запуск тестів:
+
+
+
+```powershell
+
+python -m pytest -q
+
+```
+
+
+
+Запуск сервера:
+
+
+
+```powershell
+
 python -m uvicorn app.main:app --reload
+
 ```
 
-Перевірте:
 
-- `http://127.0.0.1:8000/health`
-- `http://127.0.0.1:8000/docs`
-- `http://127.0.0.1:8000/openapi.json`
 
-## Тести
+\## Документація API
 
-```bash
-python -m pytest
+
+
+\- Swagger UI: http://127.0.0.1:8000/docs
+
+\- OpenAPI: http://127.0.0.1:8000/openapi.json
+
+\- Перевірка стану: http://127.0.0.1:8000/health
+
+
+
+\## Реалізовані маршрути
+
+
+
+| Метод | Шлях | Призначення |
+
+|---|---|---|
+
+| GET | `/health` | Перевірка готовності API |
+
+| POST | `/api/v1/students` | Створення студента |
+
+| GET | `/api/v1/students` | Отримання списку студентів |
+
+| GET | `/api/v1/students/{student\_id}` | Отримання студента за UUID |
+
+| PATCH | `/api/v1/students/{student\_id}` | Часткове оновлення студента |
+
+
+
+Для списку студентів передбачений необов'язковий фільтр `academic\_status`.
+
+
+
+\## Індивідуальний варіант №3 — academic\_status
+
+
+
+Поле `academic\_status` визначає навчальний статус студента.
+
+
+
+Допустимі значення:
+
+
+
+\- `active` — навчається;
+
+\- `academic\_leave` — академічна відпустка;
+
+\- `expelled` — відрахований;
+
+\- `graduated` — завершив навчання.
+
+
+
+Приклад фільтрації:
+
+
+
+```text
+
+GET /api/v1/students?academic\_status=active
+
 ```
 
-На старті проходить лише перевірка `/health`. Реалізуйте схеми, репозиторій, маршрути та решту тестів відповідно до документа практичної роботи.
 
-## Фіксація та публікація змін
 
-Створіть щонайменше три змістові фіксації: окремо для каркаса моделей, маршрутів і перевірок. Додавайте до кожної фіксації лише пов’язані завершені зміни. Наприклад:
+\## Обробка помилок
 
-```bash
-git add app/schemas tests
-git commit -m "Implement student data models"
 
-git add app/api app/repositories
-git commit -m "Implement student API routes"
 
-git add tests postman
-git commit -m "Add API verification scenarios"
-```
+\- `404` — запис не знайдено;
 
-Після успішного виконання тестів опублікуйте гілку та фінальний тег у власному форку:
+\- `409` — електронна адреса вже використовується;
 
-```bash
-git push -u origin practice-01
-git tag practice-01
-git push origin tag practice-01
-```
+\- `422` — некоректні вхідні дані.
 
-Для наступних практичних робіт продовжуйте розвивати цей самий форк та історію Git; не створюйте непов’язаний репозиторій.
 
-## Правила роботи з даними
 
-Використовуйте тільки вигадані записи. Не додавайте паролі, токени, приватні ключі, файли `.env` або реальні персональні дані до репозиторію.
+\## Структура зберігання даних
+
+
+
+У цій навчальній реалізації використовується сховище в оперативній пам'яті. Дані зникають після перезапуску сервера.
+
+
+
+Використовуються синтетичні дані. Проєкт не призначений для обробки реальних персональних даних.
+
+
+
+\## Git
+
+
+
+Робоча гілка: `practice-01`.
+
+
+
+Базовий репозиторій: https://github.com/serhii-ch-eu/digital-dean-api-starter
+
+
+
+Для здачі роботи необхідно опублікувати власний Fork, гілку `practice-01` і тег `practice-01`.
+
+
+## Практична робота №5 — SQLite та облікові записи
+
+Інструкція запуску, чотири account-маршрути та Postman: [PRACTICE-05.md](PRACTICE-05.md).
+Звіт: [REPORT.md](REPORT.md). Російська покрокова інструкція зі скриншотами: [docs/SCREENSHOTS-PRACTICE-05-RU.md](docs/SCREENSHOTS-PRACTICE-05-RU.md).
+Інструкція з перенесення змін у справжній Git-клон без втрати історії practice-04: [docs/GIT-PRACTICE-05-RU.md](docs/GIT-PRACTICE-05-RU.md).

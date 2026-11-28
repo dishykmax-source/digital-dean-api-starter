@@ -1,12 +1,29 @@
 .venv/
 __pycache__/
-*.py[cod]
 .pytest_cache/
-.coverage
-htmlcov/
+*.py[cod]
+.env
+.env.*
+!.env.example
 .idea/
 .vscode/
 .DS_Store
-.env
-*.pem
-*.key
+
+*.egg-info/
+
+# Local environments and generated caches
+.venv/
+venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.vs/
+*.egg-info/
+results/practice-03/*.tmp
+
+# Practice 05 local SQLite storage
+var/*
+!var/.gitignore
+*.sqlite
+*.sqlite3
+*.sqlite3-*
